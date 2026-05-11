@@ -24,6 +24,7 @@ HTTPS 배포는 [DEPLOYMENT.md](./DEPLOYMENT.md)를 따릅니다.
 
 - 카메라 직접 촬영 또는 이미지 선택
 - 로컬 Tesseract.js 기반 한글/영문 OCR
+- OCR 전 이미지 확대, 회색조, 대비 강화, 이진화 전처리
 - 한국 전화번호 추출 및 정규화
 - IndexedDB 로컬 저장
 - 촬영 이미지는 OCR 직후 폐기하고 DB에 저장하지 않음

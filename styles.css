@@ -508,7 +508,7 @@ textarea {
 
 @media (min-width: 620px) {
   .capture-actions {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     align-items: end;
   }
 

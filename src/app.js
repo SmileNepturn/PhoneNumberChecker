@@ -2,11 +2,8 @@ const DB_NAME = "korea-phone-ocr-db";
 const DB_VERSION = 1;
 const CONTACT_STORE = "contacts";
 const SESSION_STORE = "import_sessions";
-
-const sampleText = `행복식당 02-123-4567 서울시 마포구 월드컵북로 10
-가나철물 031 555 7788 경기도 수원시 영통구 센트럴로 22
-동해수산 010-2222-3333 부산광역시 해운대구 해운대로 100
-늘봄카페 0507-1234-5678 인천광역시 남동구 문화로 7`;
+const OCR_MAX_SIZE = 2200;
+const OCR_SCALE = 2;
 
 const state = {
   db: null,
@@ -36,7 +33,6 @@ const els = {
   cameraCanvas: $("#cameraCanvas"),
   captureCameraButton: $("#captureCameraButton"),
   closeCameraButton: $("#closeCameraButton"),
-  sampleButton: $("#sampleButton"),
   progressPanel: $("#progressPanel"),
   progressLabel: $("#progressLabel"),
   progressValue: $("#progressValue"),
@@ -83,7 +79,6 @@ function bindEvents() {
   els.imageInput.addEventListener("change", handleImageInput);
   els.captureCameraButton.addEventListener("click", captureCameraImage);
   els.closeCameraButton.addEventListener("click", closeCamera);
-  els.sampleButton.addEventListener("click", () => processRawText(sampleText, "sample-text"));
   els.startReviewButton.addEventListener("click", () => showView("review"));
   els.reviewForm.addEventListener("submit", handleReviewSubmit);
   els.searchInput.addEventListener("input", renderHistory);
@@ -249,13 +244,18 @@ async function runOcr(file) {
   }
 
   showProgress("OCR 준비 중", 5);
-  const result = await window.Tesseract.recognize(file, "kor+eng", {
+  const image = await prepareImageForOcr(file);
+  showProgress("이미지 보정 중", 12);
+  const result = await window.Tesseract.recognize(image, "kor+eng", {
     workerPath: "./vendor/tesseract/worker.min.js",
     corePath: "./vendor/tesseract",
     langPath: "./vendor/tessdata",
+    tessedit_pageseg_mode: "6",
+    preserve_interword_spaces: "1",
+    user_defined_dpi: "300",
     logger: (message) => {
       if (message.status === "recognizing text") {
-        const percent = Math.round((message.progress || 0) * 100);
+        const percent = 12 + Math.round((message.progress || 0) * 88);
         showProgress("텍스트 추출 중", percent);
       }
     },
@@ -263,6 +263,46 @@ async function runOcr(file) {
 
   showProgress("OCR 완료", 100);
   return result.data.text || "";
+}
+
+async function prepareImageForOcr(file) {
+  const bitmap = await createImageBitmap(file);
+  const largestSide = Math.max(bitmap.width, bitmap.height);
+  const resizeRatio = Math.min(1, OCR_MAX_SIZE / largestSide);
+  const width = Math.max(1, Math.round(bitmap.width * resizeRatio * OCR_SCALE));
+  const height = Math.max(1, Math.round(bitmap.height * resizeRatio * OCR_SCALE));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close?.();
+
+  const imageData = context.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  let total = 0;
+
+  for (let index = 0; index < data.length; index += 4) {
+    const gray = data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114;
+    total += gray;
+  }
+
+  const average = total / (data.length / 4);
+  const threshold = Math.max(120, Math.min(190, average * 0.92));
+
+  for (let index = 0; index < data.length; index += 4) {
+    const gray = data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114;
+    const contrast = (gray - 128) * 1.35 + 128;
+    const value = contrast > threshold ? 255 : 0;
+    data[index] = value;
+    data[index + 1] = value;
+    data[index + 2] = value;
+  }
+
+  context.putImageData(imageData, 0, 0);
+  return canvas;
 }
 
 async function processRawText(text, sourceName) {

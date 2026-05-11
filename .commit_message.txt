@@ -1,1 +1,1 @@
-🚀 GitHub Pages HTTPS 배포 설정 및 원격 통합
+🔎 샘플 버튼 제거 및 OCR 이미지 전처리 추가
