@@ -184,7 +184,7 @@ async function processImageFile(file, sourceName) {
 
 async function openCamera() {
   if (!navigator.mediaDevices?.getUserMedia) {
-    alert("이 브라우저에서는 카메라 직접 촬영을 지원하지 않아 이미지 선택으로 전환합니다.");
+    alert("이 브라우저에서는 카메라 직접 촬영을 지원하지 않아 사진 보관함 선택으로 전환합니다.");
     els.imageInput.click();
     return;
   }
@@ -203,7 +203,7 @@ async function openCamera() {
     els.cameraVideo.srcObject = stream;
     els.cameraSheet.hidden = false;
   } catch {
-    alert("카메라를 열 수 없습니다. 아이폰에서는 HTTPS 주소 또는 홈 화면 앱에서 다시 시도해주세요.");
+    alert("카메라를 열 수 없습니다. 아이폰에서는 HTTPS 주소 또는 홈 화면 앱에서 다시 시도하거나 사진 보관함에서 선택해주세요.");
     els.imageInput.click();
   }
 }
