@@ -1,1 +1,1 @@
-🚀 GitHub Pages HTTPS 배포 설정 추가
+🚀 GitHub Pages HTTPS 배포 설정 및 원격 통합
