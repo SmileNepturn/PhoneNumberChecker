@@ -14,6 +14,7 @@ const state = {
   lastImport: null,
   contacts: [],
   previewUrl: "",
+  cameraStream: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -24,9 +25,15 @@ const els = {
   totalCount: $("#totalCount"),
   todayCount: $("#todayCount"),
   pendingCount: $("#pendingCount"),
+  cameraButton: $("#cameraButton"),
   cameraInput: $("#cameraInput"),
   imageInput: $("#imageInput"),
   imagePreview: $("#imagePreview"),
+  cameraSheet: $("#cameraSheet"),
+  cameraVideo: $("#cameraVideo"),
+  cameraCanvas: $("#cameraCanvas"),
+  captureCameraButton: $("#captureCameraButton"),
+  closeCameraButton: $("#closeCameraButton"),
   progressPanel: $("#progressPanel"),
   progressLabel: $("#progressLabel"),
   progressValue: $("#progressValue"),
@@ -69,8 +76,11 @@ function bindEvents() {
     button.addEventListener("click", () => showView(button.dataset.viewButton));
   });
 
+  els.cameraButton.addEventListener("click", openCamera);
   els.cameraInput.addEventListener("change", (event) => handleImageInput(event, "camera-capture"));
   els.imageInput.addEventListener("change", (event) => handleImageInput(event, "selected-image"));
+  els.captureCameraButton.addEventListener("click", captureCameraImage);
+  els.closeCameraButton.addEventListener("click", closeCamera);
   els.startReviewButton.addEventListener("click", () => showView("review"));
   els.reviewForm.addEventListener("submit", handleReviewSubmit);
   els.searchInput.addEventListener("input", renderHistory);
@@ -172,6 +182,60 @@ async function processImageFile(file, sourceName) {
     showProgress("OCR 실패", 0);
     alert(`OCR 처리 중 문제가 발생했습니다.\n${error.message || error}`);
   }
+}
+
+async function openCamera() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    els.cameraInput.click();
+    return;
+  }
+
+  try {
+    closeCamera();
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+      audio: false,
+    });
+    state.cameraStream = stream;
+    els.cameraVideo.srcObject = stream;
+    els.cameraSheet.hidden = false;
+  } catch {
+    els.cameraInput.click();
+  }
+}
+
+async function captureCameraImage() {
+  const video = els.cameraVideo;
+  if (!state.cameraStream || !video.videoWidth || !video.videoHeight) return;
+
+  const canvas = els.cameraCanvas;
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const context = canvas.getContext("2d");
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+  closeCamera();
+  if (!blob) {
+    alert("사진을 만들지 못했습니다. 다시 촬영해주세요.");
+    return;
+  }
+
+  const file = new File([blob], `camera-${Date.now()}.jpg`, { type: "image/jpeg" });
+  await processImageFile(file, "camera-capture");
+}
+
+function closeCamera() {
+  if (state.cameraStream) {
+    state.cameraStream.getTracks().forEach((track) => track.stop());
+    state.cameraStream = null;
+  }
+  els.cameraVideo.srcObject = null;
+  els.cameraSheet.hidden = true;
 }
 
 async function runOcr(file) {

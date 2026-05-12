@@ -48,7 +48,7 @@
 
         <section class="panel capture-panel">
           <div class="capture-actions">
-            <label class="primary-file-button" for="cameraInput">사진찍기</label>
+            <button class="primary-button" type="button" id="cameraButton">사진찍기</button>
             <input id="cameraInput" type="file" accept="image/*" capture="environment" />
             <label class="secondary-file-button" for="imageInput">이미지 선택</label>
             <input id="imageInput" type="file" accept="image/*" />
@@ -159,5 +159,16 @@
         <section class="history-list" id="historyList" aria-live="polite"></section>
       </section>
     </main>
+
+    <section class="camera-sheet" id="cameraSheet" aria-label="카메라 촬영" hidden>
+      <div class="camera-panel">
+        <video id="cameraVideo" autoplay playsinline muted></video>
+        <canvas id="cameraCanvas" hidden></canvas>
+        <div class="camera-actions">
+          <button class="secondary-button" type="button" id="closeCameraButton">닫기</button>
+          <button class="primary-button" type="button" id="captureCameraButton">촬영</button>
+        </div>
+      </div>
+    </section>
   </body>
 </html>
