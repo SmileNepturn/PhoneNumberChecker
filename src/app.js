@@ -4,6 +4,7 @@ const CONTACT_STORE = "contacts";
 const SESSION_STORE = "import_sessions";
 const OCR_MAX_SIZE = 2200;
 const OCR_SCALE = 2;
+const OCR_ROTATIONS = [0, 90, -90];
 
 const state = {
   db: null,
@@ -180,41 +181,62 @@ async function runOcr(file) {
   }
 
   showProgress("OCR 준비 중", 5);
-  const image = await prepareImageForOcr(file);
-  showProgress("이미지 보정 중", 12);
-  const result = await window.Tesseract.recognize(image, "kor+eng", {
-    workerPath: "./vendor/tesseract/worker.min.js",
-    corePath: "./vendor/tesseract",
-    langPath: "./vendor/tessdata",
-    tessedit_pageseg_mode: "6",
-    preserve_interword_spaces: "1",
-    user_defined_dpi: "300",
-    logger: (message) => {
-      if (message.status === "recognizing text") {
-        const percent = 12 + Math.round((message.progress || 0) * 88);
-        showProgress("텍스트 추출 중", percent);
+  const bitmap = await createImageBitmap(file);
+  let best = { rotation: 0, score: -1, text: "" };
+
+  try {
+    for (let index = 0; index < OCR_ROTATIONS.length; index += 1) {
+      const rotation = OCR_ROTATIONS[index];
+      const image = prepareImageForOcr(bitmap, rotation);
+      const label = rotation === 0 ? "정방향" : `${rotation > 0 ? "+" : ""}${rotation}도`;
+      showProgress(`${label} 방향 확인 중`, 8 + Math.round((index / OCR_ROTATIONS.length) * 92));
+
+      const result = await window.Tesseract.recognize(image, "kor+eng", {
+        workerPath: "./vendor/tesseract/worker.min.js",
+        corePath: "./vendor/tesseract",
+        langPath: "./vendor/tessdata",
+        tessedit_pageseg_mode: "6",
+        preserve_interword_spaces: "1",
+        user_defined_dpi: "300",
+        logger: (message) => {
+          if (message.status === "recognizing text") {
+            const stepProgress = (index + (message.progress || 0)) / OCR_ROTATIONS.length;
+            const percent = 8 + Math.round(stepProgress * 92);
+            showProgress(`${label} 텍스트 추출 중`, percent);
+          }
+        },
+      });
+
+      const text = result.data.text || "";
+      const score = scoreOcrText(text);
+      if (score > best.score) {
+        best = { rotation, score, text };
       }
-    },
-  });
+    }
+  } finally {
+    bitmap.close?.();
+  }
 
   showProgress("OCR 완료", 100);
-  return result.data.text || "";
+  return best.text;
 }
 
-async function prepareImageForOcr(file) {
-  const bitmap = await createImageBitmap(file);
+function prepareImageForOcr(bitmap, rotation) {
   const largestSide = Math.max(bitmap.width, bitmap.height);
   const resizeRatio = Math.min(1, OCR_MAX_SIZE / largestSide);
   const width = Math.max(1, Math.round(bitmap.width * resizeRatio * OCR_SCALE));
   const height = Math.max(1, Math.round(bitmap.height * resizeRatio * OCR_SCALE));
+  const isSideways = Math.abs(rotation) === 90;
   const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = isSideways ? height : width;
+  canvas.height = isSideways ? width : height;
   const context = canvas.getContext("2d", { willReadFrequently: true });
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
-  context.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close?.();
+  context.translate(canvas.width / 2, canvas.height / 2);
+  context.rotate((rotation * Math.PI) / 180);
+  context.drawImage(bitmap, -width / 2, -height / 2, width, height);
+  context.setTransform(1, 0, 0, 1, 0, 0);
 
   const imageData = context.getImageData(0, 0, width, height);
   const data = imageData.data;
@@ -239,6 +261,16 @@ async function prepareImageForOcr(file) {
 
   context.putImageData(imageData, 0, 0);
   return canvas;
+}
+
+function scoreOcrText(text) {
+  const contacts = uniqueByPhone(extractContacts(text));
+  const rawPhoneCount = text.match(/0(?:2|[3-6][1-5]|10|50[0-9]|70|80)[\d\-\s.]{7,12}/g)?.length || 0;
+  const addressCount =
+    text.match(/(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|전라|경상|제주|광역시|특별시|시 |군 |구 |동 |로 |길 )/g)
+      ?.length || 0;
+  const hangulCount = text.match(/[가-힣]/g)?.length || 0;
+  return contacts.length * 100 + rawPhoneCount * 20 + addressCount * 4 + Math.min(hangulCount, 120) / 10;
 }
 
 async function processRawText(text, sourceName) {
