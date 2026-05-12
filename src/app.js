@@ -17,6 +17,7 @@ const state = {
   previewUrl: "",
   selectedFile: null,
   selectedSourceName: "",
+  previewBitmap: null,
   rotation: 0,
 };
 
@@ -31,7 +32,7 @@ const els = {
   cameraInput: $("#cameraInput"),
   imageInput: $("#imageInput"),
   imageReview: $("#imageReview"),
-  imagePreview: $("#imagePreview"),
+  previewCanvas: $("#previewCanvas"),
   rotateLeftButton: $("#rotateLeftButton"),
   rotateRightButton: $("#rotateRightButton"),
   extractButton: $("#extractButton"),
@@ -173,11 +174,10 @@ async function loadImageForReview(file, sourceName) {
   resetImportSummary();
   state.selectedFile = file;
   state.selectedSourceName = sourceName;
+  state.previewBitmap = await createImageBitmap(file);
   state.rotation = 0;
-  state.previewUrl = URL.createObjectURL(file);
-  els.imagePreview.src = state.previewUrl;
   els.imageReview.hidden = false;
-  updatePreviewRotation();
+  renderPreview();
 }
 
 async function extractSelectedImage() {
@@ -204,11 +204,31 @@ async function extractSelectedImage() {
 function rotatePreview(degrees) {
   if (!state.selectedFile) return;
   state.rotation = normalizeRotation(state.rotation + degrees);
-  updatePreviewRotation();
+  renderPreview();
 }
 
-function updatePreviewRotation() {
-  els.imagePreview.style.transform = `rotate(${state.rotation}deg)`;
+function renderPreview() {
+  if (!state.previewBitmap) return;
+
+  const bitmap = state.previewBitmap;
+  const isSideways = Math.abs(state.rotation) === 90 || Math.abs(state.rotation) === 270;
+  const sourceWidth = isSideways ? bitmap.height : bitmap.width;
+  const sourceHeight = isSideways ? bitmap.width : bitmap.height;
+  const maxWidth = 1400;
+  const scale = Math.min(1, maxWidth / sourceWidth);
+  const canvas = els.previewCanvas;
+  canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+  canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+
+  const context = canvas.getContext("2d");
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.save();
+  context.translate(canvas.width / 2, canvas.height / 2);
+  context.rotate((state.rotation * Math.PI) / 180);
+  const drawWidth = bitmap.width * scale;
+  const drawHeight = bitmap.height * scale;
+  context.drawImage(bitmap, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+  context.restore();
 }
 
 function normalizeRotation(degrees) {
@@ -475,11 +495,15 @@ function clearImagePreview() {
     URL.revokeObjectURL(state.previewUrl);
     state.previewUrl = "";
   }
+  state.previewBitmap?.close?.();
   state.selectedFile = null;
   state.selectedSourceName = "";
+  state.previewBitmap = null;
   state.rotation = 0;
-  els.imagePreview.removeAttribute("src");
-  els.imagePreview.style.transform = "";
+  const context = els.previewCanvas.getContext("2d");
+  context.clearRect(0, 0, els.previewCanvas.width, els.previewCanvas.height);
+  els.previewCanvas.width = 0;
+  els.previewCanvas.height = 0;
   els.imageReview.hidden = true;
 }
 
