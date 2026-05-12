@@ -165,7 +165,6 @@ h2 {
   gap: 10px;
 }
 
-#cameraInput,
 #imageInput {
   position: absolute;
   inline-size: 1px;

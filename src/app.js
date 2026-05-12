@@ -26,7 +26,6 @@ const els = {
   todayCount: $("#todayCount"),
   pendingCount: $("#pendingCount"),
   cameraButton: $("#cameraButton"),
-  cameraInput: $("#cameraInput"),
   imageInput: $("#imageInput"),
   imagePreview: $("#imagePreview"),
   cameraSheet: $("#cameraSheet"),
@@ -77,7 +76,6 @@ function bindEvents() {
   });
 
   els.cameraButton.addEventListener("click", openCamera);
-  els.cameraInput.addEventListener("change", (event) => handleImageInput(event, "camera-capture"));
   els.imageInput.addEventListener("change", (event) => handleImageInput(event, "selected-image"));
   els.captureCameraButton.addEventListener("click", captureCameraImage);
   els.closeCameraButton.addEventListener("click", closeCamera);
@@ -186,7 +184,7 @@ async function processImageFile(file, sourceName) {
 
 async function openCamera() {
   if (!navigator.mediaDevices?.getUserMedia) {
-    els.cameraInput.click();
+    alert("이 환경에서는 카메라를 직접 열 수 없습니다. Safari에서 HTTPS 주소를 열거나 홈 화면 앱에서 다시 시도해주세요.");
     return;
   }
 
@@ -204,7 +202,7 @@ async function openCamera() {
     els.cameraVideo.srcObject = stream;
     els.cameraSheet.hidden = false;
   } catch {
-    els.cameraInput.click();
+    alert("카메라 권한을 얻지 못했습니다. Safari 설정에서 카메라 권한을 허용한 뒤 다시 시도해주세요.");
   }
 }
 
