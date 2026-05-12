@@ -38,6 +38,19 @@ HTTPS 배포는 [DEPLOYMENT.md](./DEPLOYMENT.md)를 따릅니다.
 - 이력 검색과 CSV 내보내기
 - 테스트/운영 초기화를 위한 DB 초기화
 
+## OCR 정확도 검증
+
+브라우저 PWA의 Tesseract.js OCR은 표 사진과 빨간 볼펜 표시가 섞인 샘플에서 정확도가 낮았습니다. 같은 이미지에서 Apple Vision OCR은 좌표 기반 행 복원으로 32개 행을 추출했습니다.
+
+검증용 Swift CLI는 `OcrVisionProbe/`에 포함되어 있습니다.
+
+```bash
+cd OcrVisionProbe
+swift run ocr-vision-probe /Users/songsfamily/Desktop/sample.JPG
+```
+
+이 로직은 최종 iPhone 네이티브 앱으로 옮길 기준 구현입니다. PWA는 배포와 UI 검증용으로 유지하고, 실사용 OCR은 Vision 기반 네이티브 구현이 맞습니다.
+
 ## 파일 구성
 
 - `index.html`: 앱 화면 구조
@@ -46,6 +59,7 @@ HTTPS 배포는 [DEPLOYMENT.md](./DEPLOYMENT.md)를 따릅니다.
 - `manifest.webmanifest`: 홈 화면 추가용 PWA 설정
 - `service-worker.js`: 앱 정적 파일 캐시
 - `DEVELOPMENT_PLAN.md`: 개발 계획
+- `OcrVisionProbe/`: Apple Vision OCR 좌표 기반 추출 검증 CLI
 - `vendor/tesseract/`: 오프라인 OCR 실행 파일
 - `vendor/tessdata/`: 오프라인 OCR 언어 데이터
 
