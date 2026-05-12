@@ -4,7 +4,6 @@ const CONTACT_STORE = "contacts";
 const SESSION_STORE = "import_sessions";
 const OCR_MAX_SIZE = 2200;
 const OCR_SCALE = 2;
-const OCR_ROTATIONS = [0, 90, -90];
 const APP_BASE_URL = new URL("./", window.location.href);
 
 const state = {
@@ -16,6 +15,9 @@ const state = {
   lastImport: null,
   contacts: [],
   previewUrl: "",
+  selectedFile: null,
+  selectedSourceName: "",
+  rotation: 0,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -28,7 +30,11 @@ const els = {
   pendingCount: $("#pendingCount"),
   cameraInput: $("#cameraInput"),
   imageInput: $("#imageInput"),
+  imageReview: $("#imageReview"),
   imagePreview: $("#imagePreview"),
+  rotateLeftButton: $("#rotateLeftButton"),
+  rotateRightButton: $("#rotateRightButton"),
+  extractButton: $("#extractButton"),
   progressPanel: $("#progressPanel"),
   progressLabel: $("#progressLabel"),
   progressValue: $("#progressValue"),
@@ -73,6 +79,9 @@ function bindEvents() {
 
   els.cameraInput.addEventListener("change", (event) => handleImageInput(event, "camera-capture"));
   els.imageInput.addEventListener("change", (event) => handleImageInput(event, "selected-image"));
+  els.rotateLeftButton.addEventListener("click", () => rotatePreview(-90));
+  els.rotateRightButton.addEventListener("click", () => rotatePreview(90));
+  els.extractButton.addEventListener("click", extractSelectedImage);
   els.startReviewButton.addEventListener("click", () => showView("review"));
   els.reviewForm.addEventListener("submit", handleReviewSubmit);
   els.searchInput.addEventListener("input", renderHistory);
@@ -155,72 +164,87 @@ async function handleImageInput(event, sourceName) {
   const file = event.target.files?.[0];
   if (!file) return;
 
-  await processImageFile(file, file.name || sourceName);
+  await loadImageForReview(file, file.name || sourceName);
   event.target.value = "";
 }
 
-async function processImageFile(file, sourceName) {
+async function loadImageForReview(file, sourceName) {
   clearImagePreview();
+  resetImportSummary();
+  state.selectedFile = file;
+  state.selectedSourceName = sourceName;
+  state.rotation = 0;
   state.previewUrl = URL.createObjectURL(file);
   els.imagePreview.src = state.previewUrl;
-  els.imagePreview.hidden = false;
-  resetImportSummary();
+  els.imageReview.hidden = false;
+  updatePreviewRotation();
+}
+
+async function extractSelectedImage() {
+  if (!state.selectedFile) {
+    alert("먼저 사진을 찍거나 이미지를 선택해주세요.");
+    return;
+  }
+
+  els.extractButton.disabled = true;
 
   try {
-    const text = await runOcr(file);
-    await processRawText(text, sourceName);
+    const text = await runOcr(state.selectedFile, state.rotation);
+    await processRawText(text, state.selectedSourceName);
     clearImagePreview();
   } catch (error) {
     showProgress("OCR 실패", 0);
     console.error(error);
     alert("OCR 처리 중 문제가 발생했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.");
+  } finally {
+    els.extractButton.disabled = false;
   }
 }
 
-async function runOcr(file) {
+function rotatePreview(degrees) {
+  if (!state.selectedFile) return;
+  state.rotation = normalizeRotation(state.rotation + degrees);
+  updatePreviewRotation();
+}
+
+function updatePreviewRotation() {
+  els.imagePreview.style.transform = `rotate(${state.rotation}deg)`;
+}
+
+function normalizeRotation(degrees) {
+  return ((degrees % 360) + 360) % 360;
+}
+
+async function runOcr(file, rotation) {
   if (!window.Tesseract) {
     throw new Error("OCR 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해주세요.");
   }
 
   showProgress("OCR 준비 중", 5);
   const bitmap = await createImageBitmap(file);
-  let best = { rotation: 0, score: -1, text: "" };
 
   try {
-    for (let index = 0; index < OCR_ROTATIONS.length; index += 1) {
-      const rotation = OCR_ROTATIONS[index];
-      const image = prepareImageForOcr(bitmap, rotation);
-      const label = rotation === 0 ? "정방향" : `${rotation > 0 ? "+" : ""}${rotation}도`;
-      showProgress(`${label} 방향 확인 중`, 8 + Math.round((index / OCR_ROTATIONS.length) * 92));
-
-      const result = await window.Tesseract.recognize(image, "kor+eng", {
-        workerPath: assetUrl("vendor/tesseract/worker.min.js"),
-        corePath: assetUrl("vendor/tesseract"),
-        langPath: assetUrl("vendor/tessdata"),
-        tessedit_pageseg_mode: "6",
-        preserve_interword_spaces: "1",
-        user_defined_dpi: "300",
-        logger: (message) => {
-          if (message.status === "recognizing text") {
-            const stepProgress = (index + (message.progress || 0)) / OCR_ROTATIONS.length;
-            const percent = 8 + Math.round(stepProgress * 92);
-            showProgress(`${label} 텍스트 추출 중`, percent);
-          }
-        },
-      });
-
-      const text = result.data.text || "";
-      const score = scoreOcrText(text);
-      if (score > best.score) {
-        best = { rotation, score, text };
-      }
-    }
+    const image = prepareImageForOcr(bitmap, rotation);
+    showProgress("이미지 보정 중", 12);
+    const result = await window.Tesseract.recognize(image, "kor+eng", {
+      workerPath: assetUrl("vendor/tesseract/worker.min.js"),
+      corePath: assetUrl("vendor/tesseract"),
+      langPath: assetUrl("vendor/tessdata"),
+      tessedit_pageseg_mode: "6",
+      preserve_interword_spaces: "1",
+      user_defined_dpi: "300",
+      logger: (message) => {
+        if (message.status === "recognizing text") {
+          const percent = 12 + Math.round((message.progress || 0) * 88);
+          showProgress("텍스트 추출 중", percent);
+        }
+      },
+    });
+    showProgress("OCR 완료", 100);
+    return result.data.text || "";
   } finally {
     bitmap.close?.();
   }
-
-  showProgress("OCR 완료", 100);
-  return best.text;
 }
 
 function assetUrl(path) {
@@ -267,16 +291,6 @@ function prepareImageForOcr(bitmap, rotation) {
 
   context.putImageData(imageData, 0, 0);
   return canvas;
-}
-
-function scoreOcrText(text) {
-  const contacts = uniqueByPhone(extractContacts(text));
-  const rawPhoneCount = text.match(/0(?:2|[3-6][1-5]|10|50[0-9]|70|80)[\d\-\s.]{7,12}/g)?.length || 0;
-  const addressCount =
-    text.match(/(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|전라|경상|제주|광역시|특별시|시 |군 |구 |동 |로 |길 )/g)
-      ?.length || 0;
-  const hangulCount = text.match(/[가-힣]/g)?.length || 0;
-  return contacts.length * 100 + rawPhoneCount * 20 + addressCount * 4 + Math.min(hangulCount, 120) / 10;
 }
 
 async function processRawText(text, sourceName) {
@@ -461,8 +475,12 @@ function clearImagePreview() {
     URL.revokeObjectURL(state.previewUrl);
     state.previewUrl = "";
   }
+  state.selectedFile = null;
+  state.selectedSourceName = "";
+  state.rotation = 0;
   els.imagePreview.removeAttribute("src");
-  els.imagePreview.hidden = true;
+  els.imagePreview.style.transform = "";
+  els.imageReview.hidden = true;
 }
 
 function showProgress(label, value) {

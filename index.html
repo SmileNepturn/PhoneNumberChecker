@@ -56,7 +56,16 @@
           <p class="helper-text">
             사진찍기는 카메라 촬영을 열고, 이미지 선택은 사진 보관함을 엽니다.
           </p>
-          <img class="preview-image" id="imagePreview" alt="촬영한 업체 리스트 미리보기" hidden />
+          <div class="image-review" id="imageReview" hidden>
+            <div class="preview-frame">
+              <img class="preview-image" id="imagePreview" alt="촬영한 업체 리스트 미리보기" />
+            </div>
+            <div class="rotate-actions">
+              <button class="secondary-button" type="button" id="rotateLeftButton">반시계방향 회전</button>
+              <button class="secondary-button" type="button" id="rotateRightButton">시계방향 회전</button>
+            </div>
+            <button class="primary-button" type="button" id="extractButton">추출</button>
+          </div>
         </section>
 
         <section class="panel progress-panel" id="progressPanel" hidden>
