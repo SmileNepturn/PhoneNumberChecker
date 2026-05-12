@@ -21,6 +21,9 @@ const state = {
   rotation: 0,
   selection: null,
   dragStart: null,
+  resizeHandle: "",
+  resizeStart: null,
+  selectionBeforeResize: null,
   renderedPreview: null,
 };
 
@@ -37,6 +40,7 @@ const els = {
   imageReview: $("#imageReview"),
   previewCanvas: $("#previewCanvas"),
   selectionBox: $("#selectionBox"),
+  selectionHandles: $$("[data-handle]"),
   rotateLeftButton: $("#rotateLeftButton"),
   rotateRightButton: $("#rotateRightButton"),
   extractButton: $("#extractButton"),
@@ -92,6 +96,10 @@ function bindEvents() {
   els.previewCanvas.addEventListener("pointermove", updateSelection);
   els.previewCanvas.addEventListener("pointerup", finishSelection);
   els.previewCanvas.addEventListener("pointercancel", cancelSelection);
+  els.selectionHandles.forEach((handle) => handle.addEventListener("pointerdown", startResizeSelection));
+  document.addEventListener("pointermove", updateResizeSelection);
+  document.addEventListener("pointerup", finishResizeSelection);
+  document.addEventListener("pointercancel", finishResizeSelection);
   els.startReviewButton.addEventListener("click", () => showView("review"));
   els.reviewForm.addEventListener("submit", handleReviewSubmit);
   els.searchInput.addEventListener("input", renderHistory);
@@ -236,6 +244,9 @@ function renderPreview() {
   canvas.width = Math.max(1, Math.round(sourceWidth * scale));
   canvas.height = Math.max(1, Math.round(sourceHeight * scale));
   state.renderedPreview = { width: canvas.width, height: canvas.height };
+  if (!state.selection) {
+    state.selection = defaultSelection(canvas.width, canvas.height);
+  }
 
   const context = canvas.getContext("2d");
   context.clearRect(0, 0, canvas.width, canvas.height);
@@ -255,6 +266,7 @@ function normalizeRotation(degrees) {
 
 function startSelection(event) {
   if (!state.selectedFile) return;
+  if (state.resizeHandle) return;
   els.previewCanvas.setPointerCapture?.(event.pointerId);
   const point = canvasPoint(event);
   state.dragStart = point;
@@ -284,6 +296,45 @@ function cancelSelection() {
   renderSelectionBox();
 }
 
+function startResizeSelection(event) {
+  if (!state.selection) return;
+  event.preventDefault();
+  event.stopPropagation();
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+  state.resizeHandle = event.currentTarget.dataset.handle;
+  state.resizeStart = canvasPoint(event);
+  state.selectionBeforeResize = { ...state.selection };
+}
+
+function updateResizeSelection(event) {
+  if (!state.resizeHandle || !state.selectionBeforeResize) return;
+  const point = canvasPoint(event);
+  const original = state.selectionBeforeResize;
+  let left = original.x;
+  let right = original.x + original.width;
+  let top = original.y;
+  let bottom = original.y + original.height;
+
+  if (state.resizeHandle.includes("w")) left = point.x;
+  if (state.resizeHandle.includes("e")) right = point.x;
+  if (state.resizeHandle.includes("n")) top = point.y;
+  if (state.resizeHandle.includes("s")) bottom = point.y;
+
+  state.selection = normalizeSelectionRect({ x: left, y: top }, { x: right, y: bottom });
+  renderSelectionBox();
+}
+
+function finishResizeSelection() {
+  if (!state.resizeHandle) return;
+  if (!state.selection || state.selection.width < 20 || state.selection.height < 20) {
+    state.selection = state.selectionBeforeResize;
+  }
+  state.resizeHandle = "";
+  state.resizeStart = null;
+  state.selectionBeforeResize = null;
+  renderSelectionBox();
+}
+
 function canvasPoint(event) {
   const rect = els.previewCanvas.getBoundingClientRect();
   const scaleX = els.previewCanvas.width / rect.width;
@@ -297,11 +348,28 @@ function canvasPoint(event) {
 function normalizeSelectionRect(start, end) {
   const x = Math.min(start.x, end.x);
   const y = Math.min(start.y, end.y);
+  const maxWidth = state.renderedPreview?.width || els.previewCanvas.width;
+  const maxHeight = state.renderedPreview?.height || els.previewCanvas.height;
+  const clampedX = Math.max(0, Math.min(maxWidth, x));
+  const clampedY = Math.max(0, Math.min(maxHeight, y));
+  const right = Math.max(0, Math.min(maxWidth, Math.max(start.x, end.x)));
+  const bottom = Math.max(0, Math.min(maxHeight, Math.max(start.y, end.y)));
   return {
-    x,
-    y,
-    width: Math.abs(end.x - start.x),
-    height: Math.abs(end.y - start.y),
+    x: clampedX,
+    y: clampedY,
+    width: Math.max(0, right - clampedX),
+    height: Math.max(0, bottom - clampedY),
+  };
+}
+
+function defaultSelection(width, height) {
+  const insetX = Math.round(width * 0.04);
+  const insetY = Math.round(height * 0.04);
+  return {
+    x: insetX,
+    y: insetY,
+    width: Math.max(1, width - insetX * 2),
+    height: Math.max(1, height - insetY * 2),
   };
 }
 
@@ -607,6 +675,9 @@ function clearImagePreview() {
   state.rotation = 0;
   state.selection = null;
   state.dragStart = null;
+  state.resizeHandle = "";
+  state.resizeStart = null;
+  state.selectionBeforeResize = null;
   state.renderedPreview = null;
   const context = els.previewCanvas.getContext("2d");
   context.clearRect(0, 0, els.previewCanvas.width, els.previewCanvas.height);
