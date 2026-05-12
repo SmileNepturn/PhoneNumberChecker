@@ -5,6 +5,7 @@ const SESSION_STORE = "import_sessions";
 const OCR_MAX_SIZE = 2200;
 const OCR_SCALE = 2;
 const OCR_ROTATIONS = [0, 90, -90];
+const APP_BASE_URL = new URL("./", window.location.href);
 
 const state = {
   db: null,
@@ -171,7 +172,8 @@ async function processImageFile(file, sourceName) {
     clearImagePreview();
   } catch (error) {
     showProgress("OCR 실패", 0);
-    alert(`OCR 처리 중 문제가 발생했습니다.\n${error.message || error}`);
+    console.error(error);
+    alert("OCR 처리 중 문제가 발생했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.");
   }
 }
 
@@ -192,9 +194,9 @@ async function runOcr(file) {
       showProgress(`${label} 방향 확인 중`, 8 + Math.round((index / OCR_ROTATIONS.length) * 92));
 
       const result = await window.Tesseract.recognize(image, "kor+eng", {
-        workerPath: "./vendor/tesseract/worker.min.js",
-        corePath: "./vendor/tesseract",
-        langPath: "./vendor/tessdata",
+        workerPath: assetUrl("vendor/tesseract/worker.min.js"),
+        corePath: assetUrl("vendor/tesseract"),
+        langPath: assetUrl("vendor/tessdata"),
         tessedit_pageseg_mode: "6",
         preserve_interword_spaces: "1",
         user_defined_dpi: "300",
@@ -219,6 +221,10 @@ async function runOcr(file) {
 
   showProgress("OCR 완료", 100);
   return best.text;
+}
+
+function assetUrl(path) {
+  return new URL(path, APP_BASE_URL).href;
 }
 
 function prepareImageForOcr(bitmap, rotation) {

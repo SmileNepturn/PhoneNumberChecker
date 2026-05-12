@@ -1,1 +1,1 @@
-🔄 OCR 전 이미지 방향 자동 판정 추가
+🛠️ Tesseract OCR 리소스 경로를 절대 URL로 보정
