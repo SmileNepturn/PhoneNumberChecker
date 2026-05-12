@@ -1,1 +1,1 @@
-🍎 Vision OCR 검증 CLI와 샘플 테스트 결과 추가
+📱 아이폰 단독 실행용 Vision OCR 앱 추가

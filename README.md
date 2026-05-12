@@ -51,6 +51,10 @@ swift run ocr-vision-probe /Users/songsfamily/Desktop/sample.JPG
 
 이 로직은 최종 iPhone 네이티브 앱으로 옮길 기준 구현입니다. PWA는 배포와 UI 검증용으로 유지하고, 실사용 OCR은 Vision 기반 네이티브 구현이 맞습니다.
 
+## iPhone 네이티브 앱
+
+아이폰 단독 실행용 SwiftUI 앱은 `PhoneNumberCheckerIOS/`에 추가되어 있습니다. Apple Vision OCR과 아이폰 내부 JSON DB를 사용하므로 설치 후에는 Mac 서버나 GitHub Pages 없이 OCR, 매칭, 검토, 저장이 모두 아이폰 안에서 처리됩니다.
+
 ## 파일 구성
 
 - `index.html`: 앱 화면 구조
@@ -60,6 +64,7 @@ swift run ocr-vision-probe /Users/songsfamily/Desktop/sample.JPG
 - `service-worker.js`: 앱 정적 파일 캐시
 - `DEVELOPMENT_PLAN.md`: 개발 계획
 - `OcrVisionProbe/`: Apple Vision OCR 좌표 기반 추출 검증 CLI
+- `PhoneNumberCheckerIOS/`: 아이폰 단독 실행용 SwiftUI + Vision OCR 앱
 - `vendor/tesseract/`: 오프라인 OCR 실행 파일
 - `vendor/tessdata/`: 오프라인 OCR 언어 데이터
 
