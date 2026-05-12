@@ -1,4 +1,4 @@
-const CACHE_NAME = "phone-ocr-pwa-v21";
+const CACHE_NAME = "phone-ocr-pwa-v23";
 const APP_ASSETS = [
   "./",
   "./index.html",

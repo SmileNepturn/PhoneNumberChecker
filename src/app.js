@@ -4,7 +4,16 @@ const CONTACT_STORE = "contacts";
 const SESSION_STORE = "import_sessions";
 const OCR_MAX_SIZE = 2200;
 const OCR_SCALE = 2;
+const OCR_VARIANTS = [
+  { label: "선명 보정", mode: "soft" },
+  { label: "흑백 보정", mode: "binary" },
+];
 const APP_BASE_URL = new URL("./", window.location.href);
+const OCR_WORKER_OPTIONS = {
+  workerPath: assetUrl("vendor/tesseract/worker.min.js"),
+  corePath: assetUrl("vendor/tesseract"),
+  langPath: assetUrl("vendor/tessdata"),
+};
 
 const state = {
   db: null,
@@ -218,8 +227,8 @@ async function extractSelectedImage() {
   els.extractButton.disabled = true;
 
   try {
-    const text = await runOcr(state.selectedFile, state.rotation, state.selection);
-    await processRawText(text, state.selectedSourceName);
+    const result = await runOcr(state.selectedFile, state.rotation, state.selection);
+    await processRawText(result.text, state.selectedSourceName, result.contacts);
     clearImagePreview();
   } catch (error) {
     showProgress("OCR 실패", 0);
@@ -439,7 +448,7 @@ function renderSelectionBox() {
 }
 
 async function runOcr(file, rotation, selection) {
-  if (!window.Tesseract) {
+  if (!window.Tesseract?.createWorker) {
     throw new Error("OCR 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해주세요.");
   }
 
@@ -447,26 +456,48 @@ async function runOcr(file, rotation, selection) {
   const bitmap = await createImageBitmap(file);
 
   try {
-    const image = prepareImageForOcr(bitmap, rotation, selection, state.renderedPreview);
-    showProgress("이미지 보정 중", 12);
-    const result = await window.Tesseract.recognize(image, "kor+eng", {
-      workerPath: assetUrl("vendor/tesseract/worker.min.js"),
-      corePath: assetUrl("vendor/tesseract"),
-      langPath: assetUrl("vendor/tessdata"),
+    const image = prepareBaseCanvasForOcr(bitmap, rotation, selection, state.renderedPreview);
+    const variants = prepareOcrVariants(image);
+    const range = 88 / variants.length;
+    let best = { text: "", contacts: [], score: -Infinity };
+
+    for (const [index, variant] of variants.entries()) {
+      const start = 12 + index * range;
+      showProgress(`${variant.label} OCR 중`, Math.round(start));
+      const result = await recognizeCanvas(variant.canvas, variant.label, start, range);
+      const text = result.data.text || "";
+      const contacts = extractContactsFromOcrItems(ocrItemsFromBlocks(result.data.blocks));
+      const score = scoreOcrText(text) + contacts.length * 1500;
+      if (score > best.score) best = { text, contacts, score };
+    }
+
+    showProgress("OCR 완료", 100);
+    return best;
+  } finally {
+    bitmap.close?.();
+  }
+}
+
+async function recognizeCanvas(canvas, label, start, range) {
+  const worker = await window.Tesseract.createWorker("kor+eng", 1, {
+    ...OCR_WORKER_OPTIONS,
+    logger: (message) => {
+      if (message.status === "recognizing text") {
+        const percent = start + (message.progress || 0) * range;
+        showProgress(`${label} 추출 중`, Math.round(percent));
+      }
+    },
+  });
+
+  try {
+    await worker.setParameters({
       tessedit_pageseg_mode: "6",
       preserve_interword_spaces: "1",
       user_defined_dpi: "300",
-      logger: (message) => {
-        if (message.status === "recognizing text") {
-          const percent = 12 + Math.round((message.progress || 0) * 88);
-          showProgress("텍스트 추출 중", percent);
-        }
-      },
     });
-    showProgress("OCR 완료", 100);
-    return result.data.text || "";
+    return await worker.recognize(canvas, {}, { text: true, blocks: true });
   } finally {
-    bitmap.close?.();
+    await worker.terminate();
   }
 }
 
@@ -474,7 +505,7 @@ function assetUrl(path) {
   return new URL(path, APP_BASE_URL).href;
 }
 
-function prepareImageForOcr(bitmap, rotation, selection, renderedPreview) {
+function prepareBaseCanvasForOcr(bitmap, rotation, selection, renderedPreview) {
   const largestSide = Math.max(bitmap.width, bitmap.height);
   const resizeRatio = Math.min(1, OCR_MAX_SIZE / largestSide);
   const width = Math.max(1, Math.round(bitmap.width * resizeRatio * OCR_SCALE));
@@ -491,8 +522,22 @@ function prepareImageForOcr(bitmap, rotation, selection, renderedPreview) {
   context.drawImage(bitmap, -width / 2, -height / 2, width, height);
   context.setTransform(1, 0, 0, 1, 0, 0);
 
-  const targetCanvas = selection ? cropCanvas(canvas, selection, renderedPreview) : canvas;
+  return selection ? cropCanvas(canvas, selection, renderedPreview) : canvas;
+}
+
+function prepareOcrVariants(sourceCanvas) {
+  return OCR_VARIANTS.map((variant) => ({
+    label: variant.label,
+    canvas: preprocessCanvas(sourceCanvas, variant.mode),
+  }));
+}
+
+function preprocessCanvas(sourceCanvas, mode) {
+  const targetCanvas = document.createElement("canvas");
+  targetCanvas.width = sourceCanvas.width;
+  targetCanvas.height = sourceCanvas.height;
   const targetContext = targetCanvas.getContext("2d", { willReadFrequently: true });
+  targetContext.drawImage(sourceCanvas, 0, 0);
 
   const imageData = targetContext.getImageData(0, 0, targetCanvas.width, targetCanvas.height);
   const data = imageData.data;
@@ -507,9 +552,10 @@ function prepareImageForOcr(bitmap, rotation, selection, renderedPreview) {
   const threshold = Math.max(120, Math.min(190, average * 0.92));
 
   for (let index = 0; index < data.length; index += 4) {
-    const gray = data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114;
-    const contrast = (gray - 128) * 1.35 + 128;
-    const value = contrast > threshold ? 255 : 0;
+    const isRed = isRedInk(data[index], data[index + 1], data[index + 2]);
+    const gray = isRed ? 255 : data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114;
+    const contrast = clampNumber((gray - 128) * 1.35 + 128, 0, 255);
+    const value = mode === "binary" ? (contrast > threshold ? 255 : 0) : contrast;
     data[index] = value;
     data[index + 1] = value;
     data[index + 2] = value;
@@ -517,6 +563,14 @@ function prepareImageForOcr(bitmap, rotation, selection, renderedPreview) {
 
   targetContext.putImageData(imageData, 0, 0);
   return targetCanvas;
+}
+
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function isRedInk(red, green, blue) {
+  return red > 70 && red > green + 14 && red > blue + 10 && red > green * 1.16 && red > blue * 1.12;
 }
 
 function cropCanvas(sourceCanvas, selection, renderedPreview) {
@@ -534,9 +588,9 @@ function cropCanvas(sourceCanvas, selection, renderedPreview) {
   return canvas;
 }
 
-async function processRawText(text, sourceName) {
+async function processRawText(text, sourceName, structuredContacts = []) {
   state.rawText = text;
-  const extracted = extractContacts(text);
+  const extracted = [...structuredContacts, ...extractContacts(text)];
   const uniqueCandidates = uniqueByPhone(extracted);
   const pending = [];
   let duplicateCount = 0;
@@ -600,19 +654,31 @@ function extractContacts(text) {
 }
 
 function findPhoneMatches(line) {
-  const phonePattern = /(?:0(?:2|[3-6][1-5]|10|50[0-9]|70|80)[)\-\s.]*)?\d{3,4}[\-\s.]+\d{4}|0(?:2|[3-6][1-5]|10|50[0-9]|70|80)\d{7,8}/g;
-  return Array.from(line.matchAll(phonePattern)).map((match) => ({
-    value: match[0],
-    index: match.index || 0,
-  }));
+  const phonePattern = /(?:[0Oo][)\-\s.ㆍ|]*)?(?:2|[3-6][1-5]|10|50[0-9Oo]|70|80)[)\-\s.ㆍ|]*[0-9Oo][0-9Oo)\-\s.ㆍ|]{4,10}[0-9Oo]|(?:1[568][0-9Oo]{2})[)\-\s.ㆍ|]*[0-9Oo]{4}/g;
+  const matches = Array.from(String(line || "").matchAll(phonePattern))
+    .map((match) => ({
+      value: match[0],
+      index: match.index || 0,
+    }))
+    .filter((match) => isValidKoreanPhone(normalizePhone(match.value)));
+
+  return uniquePhoneMatches(matches);
 }
 
 function normalizePhone(value) {
-  return String(value || "").replace(/\D/g, "");
+  let digits = String(value || "")
+    .replace(/[０-９]/g, (char) => String(char.charCodeAt(0) - 0xff10))
+    .replace(/[Oo]/g, "0")
+    .replace(/\D/g, "");
+
+  if (/^(?:2|[3-6][1-5])\d{7,8}$/.test(digits)) digits = `0${digits}`;
+  if (/^(?:10|50\d|70|80)\d{7,8}$/.test(digits)) digits = `0${digits}`;
+  return digits;
 }
 
 function isValidKoreanPhone(value) {
   if (!value) return false;
+  if (/^1[568]\d{6}$/.test(value)) return true;
   if (value.startsWith("02")) return value.length >= 9 && value.length <= 10;
   if (/^0(?:10|50\d|70|80)/.test(value)) return value.length >= 10 && value.length <= 12;
   if (/^0[3-6][1-5]/.test(value)) return value.length >= 10 && value.length <= 11;
@@ -621,15 +687,17 @@ function isValidKoreanPhone(value) {
 
 function formatPhone(value) {
   const digits = normalizePhone(value);
+  if (/^1[568]\d{6}$/.test(digits)) return `${digits.slice(0, 4)}-${digits.slice(4)}`;
   if (digits.startsWith("02")) {
     if (digits.length === 9) return `${digits.slice(0, 2)}-${digits.slice(2, 5)}-${digits.slice(5)}`;
     if (digits.length === 10) return `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6)}`;
   }
+  if (/^050\d/.test(digits)) {
+    if (digits.length === 11) return `${digits.slice(0, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
+    if (digits.length === 12) return `${digits.slice(0, 4)}-${digits.slice(4, 8)}-${digits.slice(8)}`;
+  }
   if (digits.length === 10) return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
   if (digits.length === 11) return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
-  if (digits.length === 12 && digits.startsWith("050")) {
-    return `${digits.slice(0, 4)}-${digits.slice(4, 8)}-${digits.slice(8)}`;
-  }
   return value.trim();
 }
 
@@ -652,9 +720,139 @@ function pickAddress(after, before, next) {
 
 function cleanText(value) {
   return String(value || "")
-    .replace(/[|_[\]{}]/g, " ")
+    .replace(/[|_[\]{}"'`~<>]/g, " ")
+    .replace(/[ㆍ・·]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function scoreOcrText(text) {
+  const contacts = uniqueByPhone(extractContacts(text)).length;
+  const phoneLikeCount = text.split(/\r?\n/).reduce((count, line) => count + findPhoneMatches(line).length, 0);
+  const hangulCount = (text.match(/[가-힣]/g) || []).length;
+  const digitCount = (text.match(/\d/g) || []).length;
+  const noiseCount = (text.match(/[~`<>^]/g) || []).length;
+  return contacts * 1000 + phoneLikeCount * 120 + Math.min(hangulCount, 700) + Math.min(digitCount, 500) * 0.2 - noiseCount * 8;
+}
+
+function ocrItemsFromBlocks(blocks) {
+  const items = [];
+  collectOcrItems(blocks, items);
+  return items.filter((item) => item.text && item.width > 0 && item.height > 0);
+}
+
+function collectOcrItems(node, items) {
+  if (!node) return;
+  if (Array.isArray(node)) {
+    node.forEach((item) => collectOcrItems(item, items));
+    return;
+  }
+
+  if (node.words) collectOcrItems(node.words, items);
+  if (node.lines) collectOcrItems(node.lines, items);
+  if (node.paragraphs) collectOcrItems(node.paragraphs, items);
+  if (node.blocks) collectOcrItems(node.blocks, items);
+
+  if (node.text && node.bbox && !node.words) {
+    const text = cleanText(node.text);
+    if (!text) return;
+    items.push({
+      text,
+      confidence: Number(node.confidence || 0),
+      x: node.bbox.x0,
+      y: node.bbox.y0,
+      width: node.bbox.x1 - node.bbox.x0,
+      height: node.bbox.y1 - node.bbox.y0,
+      centerX: (node.bbox.x0 + node.bbox.x1) / 2,
+      centerY: (node.bbox.y0 + node.bbox.y1) / 2,
+    });
+  }
+}
+
+function extractContactsFromOcrItems(items) {
+  return groupOcrRows(items).flatMap((row) => {
+    const joined = row.map((item) => item.text).join(" ");
+    const phones = findPhoneMatches(joined);
+    if (phones.length === 0) return [];
+
+    return phones.map((phone) => {
+      const phoneItem = pickPhoneItem(row, phone.value);
+      const phoneCenter = phoneItem?.centerX ?? median(row.map((item) => item.centerX));
+      const leftText = row
+        .filter((item) => item.centerX < phoneCenter - Math.max(8, item.width * 0.2))
+        .map((item) => item.text)
+        .join(" ");
+      const rightText = row
+        .filter((item) => item.centerX > phoneCenter + Math.max(8, item.width * 0.2))
+        .map((item) => item.text)
+        .join(" ");
+
+      return {
+        companyName: cleanBusinessCell(leftText),
+        phoneNumber: formatPhone(phone.value),
+        normalizedPhone: normalizePhone(phone.value),
+        address: cleanBusinessCell(rightText),
+        ocrRawText: joined,
+      };
+    });
+  }).filter((candidate) => {
+    return isValidKoreanPhone(candidate.normalizedPhone) && (candidate.companyName || candidate.address);
+  });
+}
+
+function groupOcrRows(items) {
+  const sorted = items
+    .filter((item) => item.confidence > -1)
+    .sort((a, b) => a.centerY - b.centerY);
+  const rowTolerance = Math.max(14, median(sorted.map((item) => item.height)) * 0.9);
+  const rows = [];
+
+  sorted.forEach((item) => {
+    const row = rows.find((candidate) => Math.abs(average(candidate.map((rowItem) => rowItem.centerY)) - item.centerY) <= rowTolerance);
+    if (row) {
+      row.push(item);
+    } else {
+      rows.push([item]);
+    }
+  });
+
+  return rows.map((row) => row.sort((a, b) => a.centerX - b.centerX));
+}
+
+function pickPhoneItem(row, phoneValue) {
+  const normalized = normalizePhone(phoneValue);
+  return (
+    row.find((item) => normalizePhone(item.text) === normalized) ||
+    row.find((item) => findPhoneMatches(item.text).some((match) => normalizePhone(match.value) === normalized)) ||
+    row.find((item) => /\d/.test(item.text))
+  );
+}
+
+function cleanBusinessCell(value) {
+  return cleanText(value)
+    .replace(/\b[0-9Oo]{1,2}\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function average(values) {
+  if (values.length === 0) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function median(values) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+function uniquePhoneMatches(matches) {
+  const map = new Map();
+  matches.forEach((match) => {
+    const normalizedPhone = normalizePhone(match.value);
+    if (!map.has(normalizedPhone)) map.set(normalizedPhone, match);
+  });
+  return Array.from(map.values());
 }
 
 function looksLikeAddress(value) {
