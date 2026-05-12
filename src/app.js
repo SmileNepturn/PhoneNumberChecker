@@ -58,6 +58,7 @@ const els = {
   searchInput: $("#searchInput"),
   statusFilter: $("#statusFilter"),
   exportButton: $("#exportButton"),
+  resetDbButton: $("#resetDbButton"),
   historyList: $("#historyList"),
 };
 
@@ -88,6 +89,7 @@ function bindEvents() {
   els.searchInput.addEventListener("input", renderHistory);
   els.statusFilter.addEventListener("change", renderHistory);
   els.exportButton.addEventListener("click", exportCsv);
+  els.resetDbButton.addEventListener("click", resetDatabase);
 
   $$("[data-decision]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -146,6 +148,10 @@ async function addRecord(storeName, record) {
 
 async function putRecord(storeName, record) {
   return requestToPromise(transaction(storeName, "readwrite").put(record));
+}
+
+async function clearStore(storeName) {
+  return requestToPromise(transaction(storeName, "readwrite").clear());
 }
 
 async function getAllRecords(storeName) {
@@ -642,6 +648,25 @@ function exportCsv() {
   link.download = `phone-ocr-db-${todayKey()}.csv`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+async function resetDatabase() {
+  const ok = window.confirm("저장된 전화번호 DB와 가져오기 이력을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.");
+  if (!ok) return;
+
+  await clearStore(CONTACT_STORE);
+  await clearStore(SESSION_STORE);
+  state.queue = [];
+  state.currentIndex = 0;
+  state.selectedDecision = "";
+  state.rawText = "";
+  state.lastImport = null;
+  await refreshContacts();
+  renderStats();
+  renderReview();
+  renderHistory();
+  resetImportSummary();
+  alert("DB를 초기화했습니다.");
 }
 
 function csvCell(value) {

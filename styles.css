@@ -214,6 +214,20 @@ h2 {
   color: #7c4300;
 }
 
+.danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  width: 100%;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fff1f0;
+  color: var(--danger);
+  padding: 0 14px;
+  font-weight: 800;
+}
+
 .helper-text {
   margin: 12px 0 0;
   color: var(--muted);
@@ -506,7 +520,8 @@ textarea {
     align-items: end;
   }
 
-  .history-tools .secondary-button {
+  .history-tools .secondary-button,
+  .history-tools .danger-button {
     grid-column: span 2;
   }
 }
