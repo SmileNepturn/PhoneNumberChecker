@@ -19,6 +19,9 @@ const state = {
   selectedSourceName: "",
   previewBitmap: null,
   rotation: 0,
+  selection: null,
+  dragStart: null,
+  renderedPreview: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -33,6 +36,7 @@ const els = {
   imageInput: $("#imageInput"),
   imageReview: $("#imageReview"),
   previewCanvas: $("#previewCanvas"),
+  selectionBox: $("#selectionBox"),
   rotateLeftButton: $("#rotateLeftButton"),
   rotateRightButton: $("#rotateRightButton"),
   extractButton: $("#extractButton"),
@@ -84,6 +88,10 @@ function bindEvents() {
   els.rotateLeftButton.addEventListener("click", () => rotatePreview(-90));
   els.rotateRightButton.addEventListener("click", () => rotatePreview(90));
   els.extractButton.addEventListener("click", extractSelectedImage);
+  els.previewCanvas.addEventListener("pointerdown", startSelection);
+  els.previewCanvas.addEventListener("pointermove", updateSelection);
+  els.previewCanvas.addEventListener("pointerup", finishSelection);
+  els.previewCanvas.addEventListener("pointercancel", cancelSelection);
   els.startReviewButton.addEventListener("click", () => showView("review"));
   els.reviewForm.addEventListener("submit", handleReviewSubmit);
   els.searchInput.addEventListener("input", renderHistory);
@@ -182,6 +190,7 @@ async function loadImageForReview(file, sourceName) {
   state.selectedSourceName = sourceName;
   state.previewBitmap = await createImageBitmap(file);
   state.rotation = 0;
+  state.selection = null;
   els.imageReview.hidden = false;
   renderPreview();
 }
@@ -195,7 +204,7 @@ async function extractSelectedImage() {
   els.extractButton.disabled = true;
 
   try {
-    const text = await runOcr(state.selectedFile, state.rotation);
+    const text = await runOcr(state.selectedFile, state.rotation, state.selection);
     await processRawText(text, state.selectedSourceName);
     clearImagePreview();
   } catch (error) {
@@ -210,6 +219,7 @@ async function extractSelectedImage() {
 function rotatePreview(degrees) {
   if (!state.selectedFile) return;
   state.rotation = normalizeRotation(state.rotation + degrees);
+  state.selection = null;
   renderPreview();
 }
 
@@ -225,6 +235,7 @@ function renderPreview() {
   const canvas = els.previewCanvas;
   canvas.width = Math.max(1, Math.round(sourceWidth * scale));
   canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+  state.renderedPreview = { width: canvas.width, height: canvas.height };
 
   const context = canvas.getContext("2d");
   context.clearRect(0, 0, canvas.width, canvas.height);
@@ -235,13 +246,83 @@ function renderPreview() {
   const drawHeight = bitmap.height * scale;
   context.drawImage(bitmap, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
   context.restore();
+  renderSelectionBox();
 }
 
 function normalizeRotation(degrees) {
   return ((degrees % 360) + 360) % 360;
 }
 
-async function runOcr(file, rotation) {
+function startSelection(event) {
+  if (!state.selectedFile) return;
+  els.previewCanvas.setPointerCapture?.(event.pointerId);
+  const point = canvasPoint(event);
+  state.dragStart = point;
+  state.selection = { x: point.x, y: point.y, width: 0, height: 0 };
+  renderSelectionBox();
+}
+
+function updateSelection(event) {
+  if (!state.dragStart) return;
+  const point = canvasPoint(event);
+  state.selection = normalizeSelectionRect(state.dragStart, point);
+  renderSelectionBox();
+}
+
+function finishSelection(event) {
+  if (!state.dragStart) return;
+  updateSelection(event);
+  state.dragStart = null;
+  if (!state.selection || state.selection.width < 20 || state.selection.height < 20) {
+    state.selection = null;
+  }
+  renderSelectionBox();
+}
+
+function cancelSelection() {
+  state.dragStart = null;
+  renderSelectionBox();
+}
+
+function canvasPoint(event) {
+  const rect = els.previewCanvas.getBoundingClientRect();
+  const scaleX = els.previewCanvas.width / rect.width;
+  const scaleY = els.previewCanvas.height / rect.height;
+  return {
+    x: Math.max(0, Math.min(els.previewCanvas.width, (event.clientX - rect.left) * scaleX)),
+    y: Math.max(0, Math.min(els.previewCanvas.height, (event.clientY - rect.top) * scaleY)),
+  };
+}
+
+function normalizeSelectionRect(start, end) {
+  const x = Math.min(start.x, end.x);
+  const y = Math.min(start.y, end.y);
+  return {
+    x,
+    y,
+    width: Math.abs(end.x - start.x),
+    height: Math.abs(end.y - start.y),
+  };
+}
+
+function renderSelectionBox() {
+  if (!state.selection || !state.renderedPreview) {
+    els.selectionBox.hidden = true;
+    return;
+  }
+
+  const rect = els.previewCanvas.getBoundingClientRect();
+  const frameRect = els.previewCanvas.parentElement.getBoundingClientRect();
+  const scaleX = rect.width / state.renderedPreview.width;
+  const scaleY = rect.height / state.renderedPreview.height;
+  els.selectionBox.hidden = false;
+  els.selectionBox.style.left = `${rect.left - frameRect.left + state.selection.x * scaleX}px`;
+  els.selectionBox.style.top = `${rect.top - frameRect.top + state.selection.y * scaleY}px`;
+  els.selectionBox.style.width = `${state.selection.width * scaleX}px`;
+  els.selectionBox.style.height = `${state.selection.height * scaleY}px`;
+}
+
+async function runOcr(file, rotation, selection) {
   if (!window.Tesseract) {
     throw new Error("OCR 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해주세요.");
   }
@@ -250,7 +331,7 @@ async function runOcr(file, rotation) {
   const bitmap = await createImageBitmap(file);
 
   try {
-    const image = prepareImageForOcr(bitmap, rotation);
+    const image = prepareImageForOcr(bitmap, rotation, selection, state.renderedPreview);
     showProgress("이미지 보정 중", 12);
     const result = await window.Tesseract.recognize(image, "kor+eng", {
       workerPath: assetUrl("vendor/tesseract/worker.min.js"),
@@ -277,7 +358,7 @@ function assetUrl(path) {
   return new URL(path, APP_BASE_URL).href;
 }
 
-function prepareImageForOcr(bitmap, rotation) {
+function prepareImageForOcr(bitmap, rotation, selection, renderedPreview) {
   const largestSide = Math.max(bitmap.width, bitmap.height);
   const resizeRatio = Math.min(1, OCR_MAX_SIZE / largestSide);
   const width = Math.max(1, Math.round(bitmap.width * resizeRatio * OCR_SCALE));
@@ -294,7 +375,10 @@ function prepareImageForOcr(bitmap, rotation) {
   context.drawImage(bitmap, -width / 2, -height / 2, width, height);
   context.setTransform(1, 0, 0, 1, 0, 0);
 
-  const imageData = context.getImageData(0, 0, width, height);
+  const targetCanvas = selection ? cropCanvas(canvas, selection, renderedPreview) : canvas;
+  const targetContext = targetCanvas.getContext("2d", { willReadFrequently: true });
+
+  const imageData = targetContext.getImageData(0, 0, targetCanvas.width, targetCanvas.height);
   const data = imageData.data;
   let total = 0;
 
@@ -315,7 +399,22 @@ function prepareImageForOcr(bitmap, rotation) {
     data[index + 2] = value;
   }
 
-  context.putImageData(imageData, 0, 0);
+  targetContext.putImageData(imageData, 0, 0);
+  return targetCanvas;
+}
+
+function cropCanvas(sourceCanvas, selection, renderedPreview) {
+  const scaleX = sourceCanvas.width / renderedPreview.width;
+  const scaleY = sourceCanvas.height / renderedPreview.height;
+  const x = Math.max(0, Math.floor(selection.x * scaleX));
+  const y = Math.max(0, Math.floor(selection.y * scaleY));
+  const width = Math.min(sourceCanvas.width - x, Math.max(1, Math.floor(selection.width * scaleX)));
+  const height = Math.min(sourceCanvas.height - y, Math.max(1, Math.floor(selection.height * scaleY)));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  context.drawImage(sourceCanvas, x, y, width, height, 0, 0, width, height);
   return canvas;
 }
 
@@ -506,10 +605,14 @@ function clearImagePreview() {
   state.selectedSourceName = "";
   state.previewBitmap = null;
   state.rotation = 0;
+  state.selection = null;
+  state.dragStart = null;
+  state.renderedPreview = null;
   const context = els.previewCanvas.getContext("2d");
   context.clearRect(0, 0, els.previewCanvas.width, els.previewCanvas.height);
   els.previewCanvas.width = 0;
   els.previewCanvas.height = 0;
+  els.selectionBox.hidden = true;
   els.imageReview.hidden = true;
 }
 
