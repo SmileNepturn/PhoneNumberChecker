@@ -30,6 +30,26 @@
 
 처음 실행하면 카메라와 사진 접근 권한을 허용해야 합니다.
 
+설치 직전 점검은 아래 파일을 따르세요.
+
+```text
+PhoneNumberCheckerIOS/INSTALL_ON_IPHONE.md
+PhoneNumberCheckerIOS/XCODE_HANDOFF.md
+```
+
+Finder에서 바로 열려면 아래 파일을 더블클릭하세요.
+
+```text
+PhoneNumberCheckerIOS/open_in_xcode.command
+```
+
+Xcode가 설치된 Mac에서는 사전 점검 스크립트도 실행할 수 있습니다.
+
+```bash
+cd "PhoneNumberCheckerIOS"
+./preflight_ios.sh
+```
+
 ## 현재 Mac CLI 상태
 
 현재 이 작업 환경은 `xcodebuild`가 Xcode가 아닌 Command Line Tools를 보고 있어 터미널 빌드는 바로 되지 않습니다.

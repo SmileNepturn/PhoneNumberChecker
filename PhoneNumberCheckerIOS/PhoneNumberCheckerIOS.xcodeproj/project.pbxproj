@@ -13,6 +13,7 @@
 		PC0000000000000000000004 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = PC0000000000000000000014 /* Models.swift */; };
 		PC0000000000000000000005 /* PhoneStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = PC0000000000000000000015 /* PhoneStore.swift */; };
 		PC0000000000000000000006 /* VisionOCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = PC0000000000000000000016 /* VisionOCRService.swift */; };
+		PC0000000000000000000007 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = PC0000000000000000000018 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -24,6 +25,7 @@
 		PC0000000000000000000015 /* PhoneStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneStore.swift; sourceTree = "<group>"; };
 		PC0000000000000000000016 /* VisionOCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionOCRService.swift; sourceTree = "<group>"; };
 		PC0000000000000000000017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		PC0000000000000000000018 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -54,6 +56,7 @@
 				PC0000000000000000000014 /* Models.swift */,
 				PC0000000000000000000015 /* PhoneStore.swift */,
 				PC0000000000000000000016 /* VisionOCRService.swift */,
+				PC0000000000000000000018 /* Assets.xcassets */,
 				PC0000000000000000000017 /* Info.plist */,
 			);
 			path = PhoneNumberCheckerIOS;
@@ -125,6 +128,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				PC0000000000000000000007 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -263,6 +267,7 @@
 		PC0000000000000000000082 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
@@ -283,6 +288,7 @@
 		PC0000000000000000000083 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";

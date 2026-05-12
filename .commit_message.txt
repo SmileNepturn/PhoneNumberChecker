@@ -1,1 +1,1 @@
-📱 아이폰 단독 실행용 Vision OCR 앱 추가
+🧰 iOS 앱 Xcode 전달 전 준비 보강
