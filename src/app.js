@@ -21,6 +21,8 @@ const state = {
   rotation: 0,
   selection: null,
   dragStart: null,
+  moveStart: null,
+  selectionBeforeMove: null,
   resizeHandle: "",
   resizeStart: null,
   selectionBeforeResize: null,
@@ -96,7 +98,11 @@ function bindEvents() {
   els.previewCanvas.addEventListener("pointermove", updateSelection);
   els.previewCanvas.addEventListener("pointerup", finishSelection);
   els.previewCanvas.addEventListener("pointercancel", cancelSelection);
+  els.selectionBox.addEventListener("pointerdown", startMoveSelection);
   els.selectionHandles.forEach((handle) => handle.addEventListener("pointerdown", startResizeSelection));
+  document.addEventListener("pointermove", updateMoveSelection);
+  document.addEventListener("pointerup", finishMoveSelection);
+  document.addEventListener("pointercancel", finishMoveSelection);
   document.addEventListener("pointermove", updateResizeSelection);
   document.addEventListener("pointerup", finishResizeSelection);
   document.addEventListener("pointercancel", finishResizeSelection);
@@ -306,6 +312,35 @@ function startResizeSelection(event) {
   state.selectionBeforeResize = { ...state.selection };
 }
 
+function startMoveSelection(event) {
+  if (!state.selection || event.target.dataset.handle) return;
+  event.preventDefault();
+  event.stopPropagation();
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+  state.moveStart = canvasPoint(event);
+  state.selectionBeforeMove = { ...state.selection };
+}
+
+function updateMoveSelection(event) {
+  if (!state.moveStart || !state.selectionBeforeMove) return;
+  const point = canvasPoint(event);
+  const dx = point.x - state.moveStart.x;
+  const dy = point.y - state.moveStart.y;
+  state.selection = clampSelection({
+    ...state.selectionBeforeMove,
+    x: state.selectionBeforeMove.x + dx,
+    y: state.selectionBeforeMove.y + dy,
+  });
+  renderSelectionBox();
+}
+
+function finishMoveSelection() {
+  if (!state.moveStart) return;
+  state.moveStart = null;
+  state.selectionBeforeMove = null;
+  renderSelectionBox();
+}
+
 function updateResizeSelection(event) {
   if (!state.resizeHandle || !state.selectionBeforeResize) return;
   const point = canvasPoint(event);
@@ -359,6 +394,19 @@ function normalizeSelectionRect(start, end) {
     y: clampedY,
     width: Math.max(0, right - clampedX),
     height: Math.max(0, bottom - clampedY),
+  };
+}
+
+function clampSelection(selection) {
+  const maxWidth = state.renderedPreview?.width || els.previewCanvas.width;
+  const maxHeight = state.renderedPreview?.height || els.previewCanvas.height;
+  const width = Math.min(selection.width, maxWidth);
+  const height = Math.min(selection.height, maxHeight);
+  return {
+    x: Math.max(0, Math.min(maxWidth - width, selection.x)),
+    y: Math.max(0, Math.min(maxHeight - height, selection.y)),
+    width,
+    height,
   };
 }
 
@@ -675,6 +723,8 @@ function clearImagePreview() {
   state.rotation = 0;
   state.selection = null;
   state.dragStart = null;
+  state.moveStart = null;
+  state.selectionBeforeMove = null;
   state.resizeHandle = "";
   state.resizeStart = null;
   state.selectionBeforeResize = null;
