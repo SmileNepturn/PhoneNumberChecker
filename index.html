@@ -48,12 +48,13 @@
 
         <section class="panel capture-panel">
           <div class="capture-actions">
-            <button class="primary-button" type="button" id="cameraButton">사진찍기</button>
+            <label class="primary-file-button" for="cameraInput">사진찍기</label>
+            <input id="cameraInput" type="file" accept="image/*" capture="environment" />
             <label class="secondary-file-button" for="imageInput">이미지 선택</label>
             <input id="imageInput" type="file" accept="image/*" />
           </div>
           <p class="helper-text">
-            사진찍기는 카메라를 바로 열고, 지원되지 않는 환경에서는 이미지 선택으로 전환됩니다.
+            사진찍기는 아이폰 카메라 촬영을 열고, 이미지 선택은 사진 보관함을 엽니다.
           </p>
           <img class="preview-image" id="imagePreview" alt="촬영한 업체 리스트 미리보기" hidden />
         </section>
@@ -158,16 +159,5 @@
         <section class="history-list" id="historyList" aria-live="polite"></section>
       </section>
     </main>
-
-    <section class="camera-sheet" id="cameraSheet" aria-label="카메라 촬영" hidden>
-      <div class="camera-panel">
-        <video id="cameraVideo" autoplay playsinline muted></video>
-        <canvas id="cameraCanvas" hidden></canvas>
-        <div class="camera-actions">
-          <button class="secondary-button" type="button" id="closeCameraButton">닫기</button>
-          <button class="primary-button" type="button" id="captureCameraButton">촬영</button>
-        </div>
-      </div>
-    </section>
   </body>
 </html>
