@@ -1,1 +1,1 @@
-🧰 iOS 앱 Xcode 전달 전 준비 보강
+🛠️ Xcode 설치 후 iOS 빌드 점검 반영

@@ -35,4 +35,4 @@ cd "/Users/songsfamily/Documents/New project/PhoneNumberCheckerIOS"
 ./preflight_ios.sh
 ```
 
-현재 작업 Mac은 Xcode가 설치되어 있지 않거나 `xcode-select`가 Command Line Tools를 보고 있으므로 실제 iOS 빌드는 Xcode 설치 후 가능합니다.
+현재 프로젝트는 Xcode 26.5 / iOS 26.5 SDK에서 시뮬레이터 빌드까지 확인했습니다. 실제 아이폰 설치 전에는 Xcode의 `Signing & Capabilities`에서 Apple ID Team을 선택해야 합니다.
