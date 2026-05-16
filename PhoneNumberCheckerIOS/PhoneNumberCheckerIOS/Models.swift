@@ -66,6 +66,10 @@ struct ReviewCandidate: Identifiable, Hashable {
 
         return "기존: \(existingContact.status.title)"
     }
+
+    var initialStatus: CallStatus {
+        existingContact?.status ?? .missed
+    }
 }
 
 struct OCRItem {

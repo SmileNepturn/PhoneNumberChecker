@@ -52,6 +52,12 @@ struct ContentView: View {
             } message: {
                 Text(alertMessage ?? "")
             }
+            .onAppear {
+                syncSelectedStatusWithCurrent()
+            }
+            .onChange(of: store.currentReviewCandidate?.id) { _ in
+                syncSelectedStatusWithCurrent()
+            }
         }
     }
 
@@ -199,7 +205,7 @@ struct ContentView: View {
 
                     Button {
                         store.saveCurrent(status: selectedStatus)
-                        selectedStatus = .missed
+                        syncSelectedStatusWithCurrent()
                     } label: {
                         Label("다음", systemImage: "arrow.right.circle.fill")
                             .frame(maxWidth: .infinity)
@@ -325,6 +331,10 @@ struct ContentView: View {
 
             isRecognizing = false
         }
+    }
+
+    private func syncSelectedStatusWithCurrent() {
+        selectedStatus = store.currentReviewCandidate?.initialStatus ?? .missed
     }
 }
 
