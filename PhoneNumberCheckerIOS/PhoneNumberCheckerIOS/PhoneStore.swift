@@ -3,7 +3,8 @@ import Foundation
 @MainActor
 final class PhoneStore: ObservableObject {
     @Published private(set) var contacts: [StoredContact] = []
-    @Published var reviewQueue: [OCRCandidate] = []
+    @Published private(set) var reviewQueue: [ReviewCandidate] = []
+    @Published var showOnlyNewCandidates = false
     @Published var lastImportMessage = ""
 
     private let fileName = "phone-db.json"
@@ -22,59 +23,77 @@ final class PhoneStore: ObservableObject {
     }
 
     var currentCandidate: OCRCandidate? {
-        reviewQueue.first
+        currentReviewCandidate?.candidate
+    }
+
+    var currentReviewCandidate: ReviewCandidate? {
+        visibleReviewQueue.first
+    }
+
+    var visibleReviewQueue: [ReviewCandidate] {
+        if showOnlyNewCandidates {
+            return reviewQueue.filter(\.isNew)
+        }
+
+        return reviewQueue
+    }
+
+    var visibleReviewCount: Int {
+        visibleReviewQueue.count
+    }
+
+    var importedNewCount: Int {
+        reviewQueue.filter(\.isNew).count
+    }
+
+    var importedExistingCount: Int {
+        reviewQueue.filter { !$0.isNew }.count
     }
 
     func importCandidates(_ candidates: [OCRCandidate]) {
         let uniqueCandidates = candidates.uniquedByPhone()
-        var nextQueue: [OCRCandidate] = []
-        var duplicateCount = 0
-        var hiddenCount = 0
+        var nextQueue: [ReviewCandidate] = []
 
         for candidate in uniqueCandidates {
-            if let existing = contacts.first(where: { $0.normalizedPhone == candidate.normalizedPhone }) {
-                switch existing.status {
-                case .accepted, .rejected:
-                    hiddenCount += 1
-                case .missed:
-                    nextQueue.append(candidate)
-                }
-                duplicateCount += 1
-            } else {
-                nextQueue.append(candidate)
-            }
+            let existing = contacts.first { $0.normalizedPhone == candidate.normalizedPhone }
+            nextQueue.append(ReviewCandidate(candidate: candidate, existingContact: existing))
         }
 
         reviewQueue = nextQueue
-        lastImportMessage = "감지 \(uniqueCandidates.count)건, 기존 \(duplicateCount)건, 숨김 \(hiddenCount)건, 검토 \(nextQueue.count)건"
+        lastImportMessage = "감지 \(uniqueCandidates.count)건, 기존 \(importedExistingCount)건, 신규 \(importedNewCount)건"
     }
 
     func updateCurrent(companyName: String? = nil, phoneNumber: String? = nil, category: String? = nil) {
-        guard !reviewQueue.isEmpty else {
+        guard let currentID = currentReviewCandidate?.id,
+              let index = reviewQueue.firstIndex(where: { $0.id == currentID })
+        else {
             return
         }
 
         if let companyName {
-            reviewQueue[0].companyName = companyName
+            reviewQueue[index].candidate.companyName = companyName
         }
 
         if let phoneNumber {
             let formattedPhone = PhoneFormat.standardize(phoneNumber) ?? phoneNumber
-            reviewQueue[0].phoneNumber = formattedPhone
-            reviewQueue[0].normalizedPhone = PhoneFormat.digits(formattedPhone)
+            reviewQueue[index].candidate.phoneNumber = formattedPhone
+            reviewQueue[index].candidate.normalizedPhone = PhoneFormat.digits(formattedPhone)
         }
 
         if let category {
-            reviewQueue[0].category = category
+            reviewQueue[index].candidate.category = category
         }
     }
 
     func saveCurrent(status: CallStatus) {
-        guard !reviewQueue.isEmpty else {
+        guard let currentID = currentReviewCandidate?.id,
+              let queueIndex = reviewQueue.firstIndex(where: { $0.id == currentID })
+        else {
             return
         }
 
-        let candidate = reviewQueue.removeFirst()
+        let item = reviewQueue.remove(at: queueIndex)
+        let candidate = item.candidate
         let now = Date()
 
         if let index = contacts.firstIndex(where: { $0.normalizedPhone == candidate.normalizedPhone }) {
@@ -105,6 +124,7 @@ final class PhoneStore: ObservableObject {
     func resetDatabase() {
         contacts = []
         reviewQueue = []
+        showOnlyNewCandidates = false
         lastImportMessage = "DB를 초기화했습니다."
         save()
     }

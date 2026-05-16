@@ -43,6 +43,31 @@ struct StoredContact: Identifiable, Codable, Hashable {
     var lastSeenAt: Date
 }
 
+struct ReviewCandidate: Identifiable, Hashable {
+    var candidate: OCRCandidate
+    var existingContact: StoredContact?
+
+    var id: UUID {
+        candidate.id
+    }
+
+    var isNew: Bool {
+        existingContact == nil
+    }
+
+    var normalizedPhone: String {
+        candidate.normalizedPhone
+    }
+
+    var matchTitle: String {
+        guard let existingContact else {
+            return "신규"
+        }
+
+        return "기존: \(existingContact.status.title)"
+    }
+}
+
 struct OCRItem {
     let text: String
     let confidence: Float
