@@ -16,7 +16,7 @@ enum CallStatus: String, CaseIterable, Codable, Identifiable {
         case .rejected:
             return "거절"
         case .accepted:
-            return "승락"
+            return "수락"
         }
     }
 }
@@ -46,6 +46,7 @@ struct StoredContact: Identifiable, Codable, Hashable {
 struct ReviewCandidate: Identifiable, Hashable {
     var candidate: OCRCandidate
     var existingContact: StoredContact?
+    var storedContactID: StoredContact.ID?
 
     var id: UUID {
         candidate.id

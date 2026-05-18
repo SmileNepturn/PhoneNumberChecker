@@ -53,14 +53,39 @@ final class PhoneStore: ObservableObject {
     func importCandidates(_ candidates: [OCRCandidate]) {
         let uniqueCandidates = candidates.uniquedByPhone()
         var nextQueue: [ReviewCandidate] = []
+        var existingCount = 0
+        var newCount = 0
+        let now = Date()
 
         for candidate in uniqueCandidates {
-            let existing = contacts.first { $0.normalizedPhone == candidate.normalizedPhone }
-            nextQueue.append(ReviewCandidate(candidate: candidate, existingContact: existing))
+            if let index = contacts.firstIndex(where: { $0.normalizedPhone == candidate.normalizedPhone }) {
+                let existing = contacts[index]
+                contacts[index].companyName = candidate.companyName
+                contacts[index].phoneNumber = candidate.phoneNumber
+                contacts[index].category = candidate.category
+                contacts[index].lastSeenAt = now
+                nextQueue.append(ReviewCandidate(candidate: candidate, existingContact: existing, storedContactID: existing.id))
+                existingCount += 1
+            } else {
+                let newContact = StoredContact(
+                    companyName: candidate.companyName,
+                    phoneNumber: candidate.phoneNumber,
+                    normalizedPhone: candidate.normalizedPhone,
+                    category: candidate.category,
+                    status: .missed,
+                    createdAt: now,
+                    updatedAt: now,
+                    lastSeenAt: now
+                )
+                contacts.append(newContact)
+                nextQueue.append(ReviewCandidate(candidate: candidate, existingContact: nil, storedContactID: newContact.id))
+                newCount += 1
+            }
         }
 
         reviewQueue = nextQueue
-        lastImportMessage = "감지 \(uniqueCandidates.count)건, 기존 \(importedExistingCount)건, 신규 \(importedNewCount)건"
+        save()
+        lastImportMessage = "감지 \(uniqueCandidates.count)건을 DB에 저장했습니다. 기존 \(existingCount)건, 신규 \(newCount)건"
     }
 
     func updateCurrent(companyName: String? = nil, phoneNumber: String? = nil, category: String? = nil) {
@@ -96,9 +121,14 @@ final class PhoneStore: ObservableObject {
         let candidate = item.candidate
         let now = Date()
 
-        if let index = contacts.firstIndex(where: { $0.normalizedPhone == candidate.normalizedPhone }) {
+        let storedIndex = item.storedContactID.flatMap { contactID in
+            contacts.firstIndex(where: { $0.id == contactID })
+        } ?? contacts.firstIndex(where: { $0.normalizedPhone == candidate.normalizedPhone })
+
+        if let index = storedIndex {
             contacts[index].companyName = candidate.companyName
             contacts[index].phoneNumber = candidate.phoneNumber
+            contacts[index].normalizedPhone = candidate.normalizedPhone
             contacts[index].category = candidate.category
             contacts[index].status = status
             contacts[index].updatedAt = now
@@ -118,6 +148,18 @@ final class PhoneStore: ObservableObject {
             )
         }
 
+        save()
+    }
+
+    func updateContactStatus(contactID: StoredContact.ID, status: CallStatus) {
+        guard let index = contacts.firstIndex(where: { $0.id == contactID }) else {
+            return
+        }
+
+        let now = Date()
+        contacts[index].status = status
+        contacts[index].updatedAt = now
+        contacts[index].lastSeenAt = now
         save()
     }
 

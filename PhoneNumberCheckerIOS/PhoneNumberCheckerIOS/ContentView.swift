@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var alertMessage: String?
     @State private var showingResetConfirmation = false
     @State private var selectedTab = 0
+    @State private var historySearchText = ""
 
     private let ocrService = VisionOCRService()
     private static let defaultROIRect = CGRect(x: 0.05, y: 0.08, width: 0.9, height: 0.84)
@@ -279,29 +280,39 @@ struct ContentView: View {
 
     private var historyView: some View {
         List {
-            ForEach(store.contacts.sorted(by: { $0.updatedAt > $1.updatedAt })) { contact in
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(contact.companyName.isEmpty ? "(업체명 없음)" : contact.companyName)
-                            .font(.headline)
-                        Spacer()
-                        Text(contact.status.title)
-                            .font(.caption)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.teal.opacity(0.12))
-                            .clipShape(Capsule())
+            if filteredHistoryContacts.isEmpty {
+                ContentUnavailableView(
+                    historySearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "저장된 이력이 없습니다" : "검색 결과가 없습니다",
+                    systemImage: "magnifyingglass",
+                    description: Text("업체명 또는 전화번호로 검색할 수 있습니다.")
+                )
+            } else {
+                ForEach(filteredHistoryContacts) { contact in
+                    NavigationLink {
+                        HistoryDetailView(store: store, contactID: contact.id)
+                    } label: {
+                        HistoryContactRow(contact: contact)
                     }
-                    Text(contact.phoneNumber)
-                        .font(.body.monospacedDigit())
-                    if !contact.category.isEmpty {
-                        Text(contact.category)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
+                    .padding(.vertical, 4)
                 }
-                .padding(.vertical, 4)
             }
+        }
+        .searchable(text: $historySearchText, prompt: "업체명 또는 전화번호 검색")
+    }
+
+    private var filteredHistoryContacts: [StoredContact] {
+        let sortedContacts = store.contacts.sorted(by: { $0.updatedAt > $1.updatedAt })
+        let query = historySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !query.isEmpty else {
+            return sortedContacts
+        }
+
+        let queryDigits = PhoneFormat.digits(query)
+        return sortedContacts.filter { contact in
+            contact.companyName.localizedCaseInsensitiveContains(query)
+                || contact.phoneNumber.localizedCaseInsensitiveContains(query)
+                || (!queryDigits.isEmpty && contact.normalizedPhone.contains(queryDigits))
         }
     }
 
@@ -562,6 +573,106 @@ private struct ExistingContactSummary: View {
         .padding()
         .background(Color.orange.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+private struct HistoryContactRow: View {
+    let contact: StoredContact
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(contact.companyName.isEmpty ? "(업체명 없음)" : contact.companyName)
+                    .font(.headline)
+
+                Spacer()
+
+                Text(contact.status.title)
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.teal.opacity(0.12))
+                    .clipShape(Capsule())
+            }
+
+            Text(contact.phoneNumber)
+                .font(.body.monospacedDigit())
+
+            if !contact.category.isEmpty {
+                Text(contact.category)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("마지막 처리: \(contact.updatedAt.formatted(date: .numeric, time: .shortened))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct HistoryDetailView: View {
+    @ObservedObject var store: PhoneStore
+    let contactID: StoredContact.ID
+    @State private var isEditing = false
+    @State private var selectedStatus: CallStatus = .missed
+
+    private var contact: StoredContact? {
+        store.contacts.first { $0.id == contactID }
+    }
+
+    var body: some View {
+        Group {
+            if let contact {
+                Form {
+                    Section("업체 정보") {
+                        LabeledContent("업체명", value: contact.companyName.isEmpty ? "(업체명 없음)" : contact.companyName)
+                        LabeledContent("전화번호", value: contact.phoneNumber)
+                        if !contact.category.isEmpty {
+                            LabeledContent("업종/주소", value: contact.category)
+                        }
+                    }
+
+                    Section("처리 상태") {
+                        if isEditing {
+                            Picker("처리 결과", selection: $selectedStatus) {
+                                ForEach(CallStatus.allCases) { status in
+                                    Text(status.title).tag(status)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+
+                            Button {
+                                store.updateContactStatus(contactID: contact.id, status: selectedStatus)
+                                isEditing = false
+                            } label: {
+                                Label("업데이트", systemImage: "checkmark.circle.fill")
+                            }
+                        } else {
+                            LabeledContent("상태", value: contact.status.title)
+                        }
+                    }
+
+                    Section("날짜") {
+                        LabeledContent("최초 등록", value: contact.createdAt.formatted(date: .numeric, time: .shortened))
+                        LabeledContent("마지막 처리", value: contact.updatedAt.formatted(date: .numeric, time: .shortened))
+                        LabeledContent("마지막 발견", value: contact.lastSeenAt.formatted(date: .numeric, time: .shortened))
+                    }
+                }
+                .navigationTitle("이력 상세")
+                .toolbar {
+                    Button(isEditing ? "취소" : "수정") {
+                        selectedStatus = contact.status
+                        isEditing.toggle()
+                    }
+                }
+                .onAppear {
+                    selectedStatus = contact.status
+                }
+            } else {
+                ContentUnavailableView("이력을 찾을 수 없습니다", systemImage: "tray")
+            }
+        }
     }
 }
 
