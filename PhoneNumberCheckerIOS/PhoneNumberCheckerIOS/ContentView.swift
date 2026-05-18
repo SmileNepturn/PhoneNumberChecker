@@ -279,25 +279,50 @@ struct ContentView: View {
     }
 
     private var historyView: some View {
-        List {
-            if filteredHistoryContacts.isEmpty {
-                ContentUnavailableView(
-                    historySearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "저장된 이력이 없습니다" : "검색 결과가 없습니다",
-                    systemImage: "magnifyingglass",
-                    description: Text("업체명 또는 전화번호로 검색할 수 있습니다.")
-                )
-            } else {
-                ForEach(filteredHistoryContacts) { contact in
-                    NavigationLink {
-                        HistoryDetailView(store: store, contactID: contact.id)
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+
+                TextField("업체명 또는 전화번호 검색", text: $historySearchText)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+
+                if !historySearchText.isEmpty {
+                    Button {
+                        historySearchText = ""
                     } label: {
-                        HistoryContactRow(contact: contact)
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
                     }
-                    .padding(.vertical, 4)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+
+            List {
+                if filteredHistoryContacts.isEmpty {
+                    ContentUnavailableView(
+                        historySearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "저장된 이력이 없습니다" : "검색 결과가 없습니다",
+                        systemImage: "magnifyingglass",
+                        description: Text("업체명 또는 전화번호로 검색할 수 있습니다.")
+                    )
+                } else {
+                    ForEach(filteredHistoryContacts) { contact in
+                        NavigationLink {
+                            HistoryDetailView(store: store, contactID: contact.id)
+                        } label: {
+                            HistoryContactRow(contact: contact)
+                        }
+                        .padding(.vertical, 4)
+                    }
                 }
             }
         }
-        .searchable(text: $historySearchText, prompt: "업체명 또는 전화번호 검색")
     }
 
     private var filteredHistoryContacts: [StoredContact] {
